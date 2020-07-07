@@ -49,7 +49,7 @@ function get (url: string) : Promise<string> {
     );
 }
 
-async function getMov (local: boolean, query: string) : Promise<Movie | null> {
+async function getMov (local: boolean, silent: boolean, query: string) : Promise<Movie | null> {
     const url = `http://${local ? LOCAL : ONLINE}/api/movie/search?q=${encodeURI(query)}`;
 
     if (debug) log(`Get '${url}'`);
@@ -64,6 +64,8 @@ async function getMov (local: boolean, query: string) : Promise<Movie | null> {
         // assume type === "SearchResult"
         const searchResult = data as SearchResult;
         const results = searchResult.results as Movie[];
+
+        if (silent) return null;
 
         log("We found 2 or more movies. Please choose one.");
         for (const idx in results) {
@@ -84,7 +86,7 @@ async function getMov (local: boolean, query: string) : Promise<Movie | null> {
     }
 }
 
-async function getPpl (local: boolean, query: string) : Promise<Human | null> {
+async function getPpl (local: boolean, silent: boolean, query: string) : Promise<Human | null> {
     const url = `http://${local ? LOCAL : ONLINE}/api/human/search?q=${encodeURI(query)}`;
 
     if (debug) log(`Get '${url}'`);
@@ -105,6 +107,8 @@ async function getPpl (local: boolean, query: string) : Promise<Human | null> {
                 return JSON.parse(await get(`http://${local ? LOCAL : ONLINE}/api/human/${result.url}`)) as Human;
             }
         }
+
+        if (silent) return null;
 
         log("We found 2 or more people. Please choose one.");
         for (const idx in results) {
@@ -159,9 +163,9 @@ function writeCache () {
     fs.writeFileSync(cachePath, JSON.stringify(cache, null, 4));
 }
 
-async function getData (local: boolean, name: string, dir: string) : Promise<void> {
+async function getData (local: boolean, silent: boolean, name: string, dir: string) : Promise<void> {
     try {
-        const movData = await getMov(local, name);
+        const movData = await getMov(local, silent, name);
 
         if (!movData) {
             console.error(`Not found mov '${name}'`);
@@ -199,7 +203,7 @@ async function getData (local: boolean, name: string, dir: string) : Promise<voi
 
             } else {
                 // new actor
-                const pplData = await getPpl(local, actor.text);
+                const pplData = await getPpl(local, silent, actor.text);
 
                 if (pplData) {
                     if (debug) log(pplData);
@@ -208,6 +212,9 @@ async function getData (local: boolean, name: string, dir: string) : Promise<voi
 
                     cache[actor.text] = actorNameValue;
                     people.push(actorNameValue);
+
+                } else {
+                    console.error(`Not found human '${actor.text}'`);
                 }
             }
         }
@@ -255,7 +262,11 @@ async function getData (local: boolean, name: string, dir: string) : Promise<voi
     }
 }
 
+const silent = argv.filter(a => a === "-s" || a === "--silent").length > 0;
+
 if (debug) log(`Params: ${JSON.stringify(argv)}`);
+
+if (silent) log("<<<SILENT MODE>>>");
 
 if (argv[0] === "get") {
     const key = argv[1];
@@ -279,7 +290,7 @@ if (argv[0] === "get") {
 } else {
     if (!recursive) {
         const { dir, name } = path.parse(cwd);
-        getData(local, name, dir)
+        getData(local, silent, name, dir)
             .then(() => {
                 writeCache();
             })
@@ -295,7 +306,7 @@ if (argv[0] === "get") {
             for (const name of dirs) {
                 try {
                     log(`Get data for '${name}'`);
-                    await getData(local, name, dir);
+                    await getData(local, silent, name, dir);
                     log();
 
                 } catch (err) {
