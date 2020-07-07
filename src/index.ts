@@ -7,7 +7,8 @@ import readline from 'readline';
 const LOCAL = "localhost:3000";
 const ONLINE = "leech-server.herokuapp.com";
 
-const debug = process.argv.slice(1).filter(a => a === "-d" || a === "--debug").length > 0;
+const argv = process.argv.slice(2);
+const debug = argv.filter(a => a === "-d" || a === "--debug").length > 0;
 
 function log (message?: unknown, level: number = 0) {
     let mss = " " + message;
@@ -147,7 +148,6 @@ function download (local: boolean, uri: string, filepath: string) : Promise<void
     );
 }
 
-const argv = process.argv.slice(2);
 const recursive = argv.filter(a => a === "-r").length > 0;
 const local = argv.filter(a => a === "-l" || a === "--local").length > 0;
 const cwd = process.cwd();
