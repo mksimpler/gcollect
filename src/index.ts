@@ -245,7 +245,7 @@ async function getData (local: boolean, silent: boolean, name: string, dir: stri
 
         // read mov name for tagging
         let tag = "";
-        const nameval = name.toUpperCase().slice(0, 4).trim();
+        const nameval = name.slice(0, 4).trim().toUpperCase();
 
         switch (nameval) {
 
@@ -302,13 +302,17 @@ if (argv[0] === "get-tag") {
     const key = argv[1];
 
     log("Result");
-    if (Object.prototype.hasOwnProperty.call(tagCache, key)) {
-        log(`{ '${key}': '${tagCache[key]}' }`);
+    if (key === "--all" || key === "-a") {
+        log(JSON.stringify(tagCache, null, 2));
 
     } else {
-        log(`{ '${key}': undefined }`);
-    }
+        if (Object.prototype.hasOwnProperty.call(tagCache, key)) {
+            log(`{ '${key}': '${tagCache[key]}' }`);
 
+        } else {
+            log(`{ '${key}': undefined }`);
+        }
+    }
 } else if (argv[0] === "set-tag") {
     const [key, value] = argv.slice(1, 3);
 
@@ -321,13 +325,17 @@ if (argv[0] === "get-tag") {
     const key = argv[1];
 
     log("Result");
-    if (Object.prototype.hasOwnProperty.call(cache, key)) {
-        log(`{ '${key}': '${cache[key]}' }`);
+    if (key === "--all" || key === "-a") {
+        log(JSON.stringify(cache, null, 2));
 
     } else {
-        log(`{ '${key}': undefined }`);
-    }
+        if (Object.prototype.hasOwnProperty.call(cache, key)) {
+            log(`{ '${key}': '${cache[key]}' }`);
 
+        } else {
+            log(`{ '${key}': undefined }`);
+        }
+    }
 } else if (argv[0] === "set-cache") {
     const [key, value] = argv.slice(1, 3);
 
