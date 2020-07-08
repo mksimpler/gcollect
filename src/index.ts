@@ -10,7 +10,7 @@ const ONLINE = "leech-server.herokuapp.com";
 const argv = process.argv.slice(2);
 const debug = argv.filter(a => a === "-d" || a === "--debug").length > 0;
 
-function log (message?: unknown, level: number = 0) {
+function log (message: unknown = "", level: number = 0) {
     let mss = " " + message;
 
     for (let i=0; i<level; i++) {
@@ -159,12 +159,21 @@ const cwd = process.cwd();
 const cachePath = "d:\\etc\\gcollect\\cache.json";
 const cache: { [name: string]: string } = JSON.parse("" + fs.readFileSync(cachePath));
 
-function writeCache () {
-    fs.writeFileSync(cachePath, JSON.stringify(cache, null, 4));
+const tagCachePath = "d:\\etc\\gcollect\\tag.json";
+const tagCache: { [name: string]: string } = JSON.parse("" + fs.readFileSync(tagCachePath));
+
+function writeCache (filepath: string, data: { [name: string]: string }) {
+    fs.writeFileSync(filepath, JSON.stringify(data, null, 4));
 }
 
 async function getData (local: boolean, silent: boolean, name: string, dir: string) : Promise<void> {
+
+    if (fs.existsSync(path.join(dir, name, `${name.toLowerCase()}_cover.jpg`))) {
+        return;
+    }
+
     try {
+        log(`Get data for '${name}'`);
         const movData = await getMov(local, silent, name);
 
         if (!movData) {
@@ -194,61 +203,69 @@ async function getData (local: boolean, silent: boolean, name: string, dir: stri
         // read actor data and rename file
         const people: string[] = [];
 
-        log(`Finding actors for ${name}`, 1);
+        if (movData.actors.length > 0) {
+            log(`Finding actors for ${name}`, 1);
 
-        for (const actor of movData.actors) {
-            if (Object.prototype.hasOwnProperty.call(cache, actor.text)) {
-                // actor cached
-                people.push(cache[actor.text]);
-
-            } else {
-                // new actor
-                const pplData = await getPpl(local, silent, actor.text);
-
-                if (pplData) {
-                    if (debug) log(pplData);
-
-                    const actorNameValue = pplData.name.engname.split(" ").reverse().join(" ");
-
-                    cache[actor.text] = actorNameValue;
-                    people.push(actorNameValue);
+            for (const actor of movData.actors) {
+                if (Object.prototype.hasOwnProperty.call(cache, actor.text)) {
+                    // actor cached
+                    people.push(cache[actor.text]);
 
                 } else {
-                    console.error(`Not found human '${actor.text}'`);
+                    // new actor
+                    const pplData = await getPpl(local, silent, actor.text);
+
+                    if (pplData) {
+                        if (debug) log(pplData);
+
+                        const actorNameValue = pplData.name.engname.split(" ").reverse().join(" ");
+
+                        cache[actor.text] = actorNameValue;
+                        people.push(actorNameValue);
+
+                    } else {
+                        console.error(`Not found human '${actor.text}'`);
+                    }
                 }
             }
         }
 
         // read mov name for tagging
         let tag = "";
-        const nameval = name.toUpperCase().slice(0, 4);
+        const nameval = name.toUpperCase().slice(0, 4).trim();
 
         switch (nameval) {
-            case "1PON":
-            case "10MU":
-            case "CARI":
-            case "PACO":
-            case "TOKY":
-                tag = "[jav; unc]";
-                break;
 
-            case "FC2 ":
-                log("Found FC2 mov, check yourself ok");
-                tag = "[jav; unc]";
+            case "FC2":
+                if (movData.director !== null && Object.prototype.hasOwnProperty.call(tagCache, movData.director.text)) {
+                    tag = tagCache[movData.director.text];
+
+                } else {
+                    log(`Found FC2 mov, check for yourself '${name}'`)
+                    tag = "[jav; unc]";
+                }
                 break;
 
             default:
-                tag = "[jav]";
+                if (Object.prototype.hasOwnProperty.call(tagCache, nameval)) {
+                    tag = tagCache[nameval];
+
+                } else {
+                    tag = "[jav]";
+                }
                 break;
         }
 
-        if (movData.actors.length == 0 && nameval === "FC2 " && movData.director !== null) {
+        if (movData.actors.length == 0 && nameval === "FC2" && movData.director !== null) {
             people.push(movData.director.text);
         }
 
         // rename
         if (recursive) {
-            const newName = `${people.join("; ")} @ ${name} ${tag}`.trim();
+            let newName = name;
+            if (tag) newName = `${name} ${tag}`;
+            if (people.length > 0) newName = `${people.join("; ")} @ ${name} ${tag}`;
+
             log(`Rename ${name} -> ${newName}`);
             fs.renameSync(path.join(dir, name), path.join(dir, newName));
 
@@ -268,7 +285,26 @@ if (debug) log(`Params: ${JSON.stringify(argv)}`);
 
 if (silent) log("<<<SILENT MODE>>>");
 
-if (argv[0] === "get") {
+if (argv[0] === "get-tag") {
+    const key = argv[1];
+
+    log("Result");
+    if (Object.prototype.hasOwnProperty.call(tagCache, key)) {
+        log(`{ '${key}': '${tagCache[key]}' }`);
+
+    } else {
+        log(`{ '${key}': undefined }`);
+    }
+
+} else if (argv[0] === "set-tag") {
+    const [key, value] = argv.slice(1, 3);
+
+    tagCache[key] = value;
+    log(`Set key:'${key}' to '${value}'`);
+
+    writeCache(tagCachePath, tagCache);
+
+} else if (argv[0] === "get-cache") {
     const key = argv[1];
 
     log("Result");
@@ -279,45 +315,39 @@ if (argv[0] === "get") {
         log(`{ '${key}': undefined }`);
     }
 
-} else if (argv[0] === "set") {
+} else if (argv[0] === "set-cache") {
     const [key, value] = argv.slice(1, 3);
 
     cache[key] = value;
     log(`Set key:'${key}' to '${value}'`);
 
-    writeCache();
+    writeCache(cachePath, cache);
 
 } else {
-    if (!recursive) {
-        const { dir, name } = path.parse(cwd);
-        getData(local, silent, name, dir)
-            .then(() => {
-                writeCache();
-            })
-            .catch(err => {
-                console.error(`${err}`);
-            });
+    Promise.resolve()
+        .then(async () => {
+            if (!recursive) {
+                const { dir, name } = path.parse(cwd);
+                await getData(local, silent, name, dir);
 
-    } else {
-        const dir = cwd;
-        const dirs = fs.readdirSync(dir);
+            } else {
+                const dir = cwd;
+                const dirs = fs.readdirSync(dir);
 
-        (async () => {
-            for (const name of dirs) {
-                try {
-                    log(`Get data for '${name}'`);
-                    await getData(local, silent, name, dir);
-                    log();
+                for (const name of dirs) {
+                    try {
+                        await getData(local, silent, name, dir);
+                        log();
 
-                } catch (err) {
-                    console.error(`Error while process ${name}: ${err}`);
+                    } catch (err) {
+                        console.error(`Error while process ${name}: ${err}`);
+                    }
                 }
             }
+        }).then(() => {
+            writeCache(cachePath, cache);
 
-            writeCache();
-        })()
-        .catch(err => {
+        }).catch(err => {
             console.error(`${err}`);
         });
-    }
 }
