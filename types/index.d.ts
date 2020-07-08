@@ -1,3 +1,5 @@
+declare type Json = { [name: string]: string };
+
 declare interface Href {
     text: string,
     url: string

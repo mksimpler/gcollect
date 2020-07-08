@@ -4,20 +4,22 @@ import fs from "fs";
 
 import readline from 'readline';
 
-const LOCAL = "localhost:3000";
-const ONLINE = "leech-server.herokuapp.com";
-
 const argv = process.argv.slice(2);
 const debug = argv.filter(a => a === "-d" || a === "--debug").length > 0;
 
 function log (message: unknown = "", level: number = 0) {
-    let mss = " " + message;
+    if (typeof message === "string") {
+        let mss = " " + message;
 
-    for (let i=0; i<level; i++) {
-        mss = `+${mss}`;
+        for (let i=0; i<level; i++) {
+            mss = `+${mss}`;
+        }
+
+        console.log(mss.trim());
+
+    } else {
+        console.log(message);
     }
-
-    console.log(mss.trim());
 }
 
 function promptAsk (text: string) : Promise<string> {
@@ -49,8 +51,14 @@ function get (url: string) : Promise<string> {
     );
 }
 
+const configPath = "d:\\etc\\gcollect";
+const config: Json = JSON.parse("" + fs.readFileSync(path.join(configPath, "config.json")));
+
+const LOCAL = config["domain-local"];
+const ONLINE = config["domain-online"];
+
 async function getMov (local: boolean, silent: boolean, query: string) : Promise<Movie | null> {
-    const url = `http://${local ? LOCAL : ONLINE}/api/movie/search?q=${encodeURI(query)}`;
+    const url = `http://${local ? LOCAL : ONLINE}/${config["mov-path-search"]}?q=${encodeURI(query)}`;
 
     if (debug) log(`Get '${url}'`);
 
@@ -74,7 +82,7 @@ async function getMov (local: boolean, silent: boolean, query: string) : Promise
         const ans = await promptAsk("You choose: ");
         try {
             const chose = parseInt(ans) - 1;
-            return JSON.parse(await get(`http://${local ? LOCAL : ONLINE}/api/human/${results[chose].url}`)) as Movie;
+            return JSON.parse(await get(`http://${local ? LOCAL : ONLINE}/${config["mov-path"]}/${results[chose].url}`)) as Movie;
 
         } catch (err) {
             return null;
@@ -87,7 +95,7 @@ async function getMov (local: boolean, silent: boolean, query: string) : Promise
 }
 
 async function getPpl (local: boolean, silent: boolean, query: string) : Promise<Human | null> {
-    const url = `http://${local ? LOCAL : ONLINE}/api/human/search?q=${encodeURI(query)}`;
+    const url = `http://${local ? LOCAL : ONLINE}/${config["ppl-path-search"]}?q=${encodeURI(query)}`;
 
     if (debug) log(`Get '${url}'`);
 
@@ -104,7 +112,7 @@ async function getPpl (local: boolean, silent: boolean, query: string) : Promise
 
         for (const result of results) {
             if (result.name.value === query) {
-                return JSON.parse(await get(`http://${local ? LOCAL : ONLINE}/api/human/${result.url}`)) as Human;
+                return JSON.parse(await get(`http://${local ? LOCAL : ONLINE}/${config["ppl-path"]}/${result.url}`)) as Human;
             }
         }
 
@@ -117,7 +125,7 @@ async function getPpl (local: boolean, silent: boolean, query: string) : Promise
         const ans = await promptAsk("You choose: ");
         try {
             const chose = parseInt(ans) - 1;
-            return JSON.parse(await get(`http://${local ? LOCAL : ONLINE}/api/human/${results[chose].url}`)) as Human;
+            return JSON.parse(await get(`http://${local ? LOCAL : ONLINE}/${config["ppl-path"]}/${results[chose].url}`)) as Human;
 
         } catch (err) {
             return null;
@@ -156,13 +164,13 @@ const recursive = argv.filter(a => a === "-r").length > 0;
 const local = argv.filter(a => a === "-l" || a === "--local").length > 0;
 const cwd = process.cwd();
 
-const cachePath = "d:\\etc\\gcollect\\cache.json";
-const cache: { [name: string]: string } = JSON.parse("" + fs.readFileSync(cachePath));
+const cachePath = path.join(configPath, config["cache"]);
+const cache: Json = JSON.parse("" + fs.readFileSync(cachePath));
 
-const tagCachePath = "d:\\etc\\gcollect\\tag.json";
-const tagCache: { [name: string]: string } = JSON.parse("" + fs.readFileSync(tagCachePath));
+const tagCachePath = path.join(configPath, config["tag"]);
+const tagCache: Json = JSON.parse("" + fs.readFileSync(tagCachePath));
 
-function writeCache (filepath: string, data: { [name: string]: string }) {
+function writeCache (filepath: string, data: Json) {
     fs.writeFileSync(filepath, JSON.stringify(data, null, 4));
 }
 
@@ -184,10 +192,15 @@ async function getData (local: boolean, silent: boolean, name: string, dir: stri
         if (debug) log(movData);
 
         log("Download cover.jpg", 1);
-        await download(local, movData.covers[0], path.join(dir, name, `${name.toLowerCase()}_cover.jpg`));
+        if (movData.covers.length > 0) {
+            await download(local, movData.covers[0], path.join(dir, name, `${name.toLowerCase()}_cover.jpg`));
 
-        log("Download thumb.jpg", 1);
-        await download(local, movData.thumb[0], path.join(dir, name, `${name.toLowerCase()}_thumb.jpg`));
+            log("Download thumb.jpg", 1);
+            await download(local, movData.thumb[0], path.join(dir, name, `${name.toLowerCase()}_thumb.jpg`));
+
+        } else {
+            await download(local, movData.thumb[0], path.join(dir, name, `${name.toLowerCase()}_cover.jpg`));
+        }
 
         for (const idx in movData.screenshots) {
             let filename = `${name.toLowerCase()}_screenshot.jpg`;
@@ -237,8 +250,8 @@ async function getData (local: boolean, silent: boolean, name: string, dir: stri
         switch (nameval) {
 
             case "FC2":
-                if (movData.director !== null && Object.prototype.hasOwnProperty.call(tagCache, movData.director.text)) {
-                    tag = tagCache[movData.director.text];
+                if (movData.label !== null && Object.prototype.hasOwnProperty.call(tagCache, movData.label.text)) {
+                    tag = tagCache[movData.label.text];
 
                 } else {
                     log(`Found FC2 mov, check for yourself '${name}'`)
@@ -256,8 +269,8 @@ async function getData (local: boolean, silent: boolean, name: string, dir: stri
                 break;
         }
 
-        if (movData.actors.length == 0 && nameval === "FC2" && movData.director !== null) {
-            people.push(movData.director.text);
+        if (movData.actors.length == 0 && nameval === "FC2" && movData.label !== null) {
+            people.push(movData.label.text);
         }
 
         // rename
