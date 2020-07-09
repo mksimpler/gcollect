@@ -89,7 +89,7 @@ async function getMov (local: boolean, silent: boolean, query: string) : Promise
         }
 
     } catch (err) {
-        console.error(err);
+        if (debug) console.error(err);
         return null;
     }
 }
@@ -132,7 +132,7 @@ async function getPpl (local: boolean, silent: boolean, query: string) : Promise
         }
 
     } catch (err) {
-        console.error(err);
+        if (debug) console.error(err);
         return null;
     }
 }
@@ -181,82 +181,15 @@ async function getData (local: boolean, silent: boolean, name: string, dir: stri
     }
 
     try {
-        log(`Get data for '${name}'`);
-        const movData = await getMov(local, silent, name);
-
-        if (!movData) {
-            console.error(`Not found mov '${name}'`);
-            return;
-        }
-
-        if (debug) log(movData);
-
-        log("Download cover.jpg", 1);
-        if (movData.covers.length > 0) {
-            await download(local, movData.covers[0], path.join(dir, name, `${name.toLowerCase()}_cover.jpg`));
-
-            log("Download thumb.jpg", 1);
-            await download(local, movData.thumb[0], path.join(dir, name, `${name.toLowerCase()}_thumb.jpg`));
-
-        } else {
-            await download(local, movData.thumb[0], path.join(dir, name, `${name.toLowerCase()}_cover.jpg`));
-        }
-
-        for (const idx in movData.screenshots) {
-            let filename = `${name.toLowerCase()}_screenshot.jpg`;
-
-            if (movData.screenshots.length > 1) {
-                filename = `${name.toLowerCase()}_screenshot${(((parseInt(idx)+1) + "").padStart(2, "0"))}.jpg`;
-            }
-
-            log(`Download ${filename}`, 1);
-            await download(local, movData.screenshots[idx], path.join(dir, name, filename));
-        }
-
-        // read actor data and rename file
-        const people: string[] = [];
-
-        if (movData.actors.length > 0) {
-            log(`Finding actors for ${name}`, 1);
-
-            for (const actor of movData.actors) {
-                if (Object.prototype.hasOwnProperty.call(cache, actor.text)) {
-                    // actor cached
-                    people.push(cache[actor.text]);
-
-                } else {
-                    // new actor
-                    const pplData = await getPpl(local, silent, actor.text);
-
-                    if (pplData) {
-                        if (debug) log(pplData);
-
-                        const actorNameValue = pplData.name.engname.split(" ").reverse().join(" ");
-
-                        cache[actor.text] = actorNameValue;
-                        people.push(actorNameValue);
-
-                    } else {
-                        console.error(`Not found human '${actor.text}'`);
-                    }
-                }
-            }
-        }
-
-        // read mov name for tagging
         let tag = "";
+        const people: string[] = [];
         const nameval = name.slice(0, 4).trim().toUpperCase();
 
+        // read mov name for tagging
         switch (nameval) {
 
             case "FC2":
-                if (movData.label !== null && Object.prototype.hasOwnProperty.call(tagCache, movData.label.text)) {
-                    tag = tagCache[movData.label.text];
-
-                } else {
-                    log(`Found FC2 mov, check for yourself '${name}'`)
-                    tag = "[jav; unc]";
-                }
+                tag = "[jav; unc]";
                 break;
 
             default:
@@ -269,8 +202,70 @@ async function getData (local: boolean, silent: boolean, name: string, dir: stri
                 break;
         }
 
-        if (movData.actors.length == 0 && nameval === "FC2" && movData.label !== null) {
-            people.push(movData.label.text);
+        log(`Get data for '${name}'`);
+        const movData = await getMov(local, silent, name);
+
+        if (movData) {
+            if (debug) log(movData);
+
+            log("Download cover.jpg", 1);
+            if (movData.covers.length > 0) {
+                await download(local, movData.covers[0], path.join(dir, name, `${name.toLowerCase()}_cover.jpg`));
+
+                log("Download thumb.jpg", 1);
+                await download(local, movData.thumb[0], path.join(dir, name, `${name.toLowerCase()}_thumb.jpg`));
+
+            } else {
+                await download(local, movData.thumb[0], path.join(dir, name, `${name.toLowerCase()}_cover.jpg`));
+            }
+
+            for (const idx in movData.screenshots) {
+                let filename = `${name.toLowerCase()}_screenshot.jpg`;
+
+                if (movData.screenshots.length > 1) {
+                    filename = `${name.toLowerCase()}_screenshot${(((parseInt(idx)+1) + "").padStart(2, "0"))}.jpg`;
+                }
+
+                log(`Download ${filename}`, 1);
+                await download(local, movData.screenshots[idx], path.join(dir, name, filename));
+            }
+
+            // read actor data
+            if (movData.actors.length > 0) {
+                log(`Finding actors for ${name}`, 1);
+
+                for (const actor of movData.actors) {
+                    if (Object.prototype.hasOwnProperty.call(cache, actor.text)) {
+                        // actor cached
+                        people.push(cache[actor.text]);
+
+                    } else {
+                        // new actor
+                        const pplData = await getPpl(local, silent, actor.text);
+
+                        if (pplData) {
+                            if (debug) log(pplData);
+
+                            const actorNameValue = pplData.name.engname.split(" ").reverse().join(" ");
+
+                            cache[actor.text] = actorNameValue;
+                            people.push(actorNameValue);
+
+                        } else {
+                            console.error(`Not found human '${actor.text}'`);
+                        }
+                    }
+                }
+            } else if (nameval === "FC2" && movData.label !== null) {
+                people.push(movData.label.text);
+            }
+
+            if (nameval === "FC2" && movData.label !== null && Object.prototype.hasOwnProperty.call(tagCache, movData.label.text)) {
+                tag = tagCache[movData.label.text];
+            }
+
+        } else {
+            console.error(`Not found mov '${name}'`);
         }
 
         // rename
@@ -285,7 +280,6 @@ async function getData (local: boolean, silent: boolean, name: string, dir: stri
         } else {
             log("Cannot rename without recursive mode");
         }
-
 
     } catch (error) {
         console.error(error);
