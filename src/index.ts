@@ -38,6 +38,10 @@ function promptAsk (text: string) : Promise<string> {
     );
 }
 
+function isASCII(str: string) {
+    return /^[\x00-\x7F]*$/.test(str);
+}
+
 function get (url: string) : Promise<string> {
     return new Promise(
         (resolve, reject) => {
@@ -120,7 +124,7 @@ async function getPpl (local: boolean, silent: boolean, query: string) : Promise
 
         log("We found 2 or more people. Please choose one.");
         for (const idx in results) {
-            log(`${parseInt(idx) + 1}. ${results[idx].name.type} (${results[idx].name.engname})`);
+            log(`${parseInt(idx) + 1}. ${results[idx].name.value} (${results[idx].name.engname})`);
         }
         const ans = await promptAsk("You choose: ");
         try {
@@ -242,17 +246,36 @@ async function getData (local: boolean, silent: boolean, name: string, dir: stri
                         people.push(cache[actor.text]);
 
                     } else {
+
+                        let actorValue = actor.text;
+
+                        if (isASCII(actorValue)) {
+                            const actorValueArray = actorValue.split(" ");
+
+                            if (actorValueArray.length == 1) {
+                                actorValue = actorValueArray[0];
+
+                            } else if (actorValueArray.length == 2) {
+                                actorValue = `${actorValueArray[1]} ${actorValueArray[0]}`;
+
+                            }
+                        }
+
                         // new actor
-                        const pplData = await getPpl(local, silent, actor.text);
+                        const pplData = await getPpl(local, silent, actorValue);
 
                         if (pplData) {
                             if (debug) log(pplData);
 
-                            const actorNameValue = pplData.name.engname.split(" ").reverse().join(" ");
+                            if (Object.prototype.hasOwnProperty.call(cache, pplData.name.value)) {
+                                people.push(cache[pplData.name.value]);
 
-                            cache[actor.text] = actorNameValue;
-                            people.push(actorNameValue);
+                            } else {
+                                const actorNameValue = pplData.name.engname.split(" ").reverse().join(" ");
 
+                                cache[actor.text] = actorNameValue;
+                                people.push(actorNameValue);
+                            }
                         } else {
                             console.error(`Not found human '${actor.text}'`);
                         }
