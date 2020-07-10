@@ -144,20 +144,26 @@ function download (local: boolean, uri: string, filepath: string) : Promise<void
 
     return new Promise(
         (resolve, reject) => {
-            request.get(
-                url, (error, response) => {
-                    if (error) return reject(error);
-                    if (response.statusCode !== 200) return reject(new Error(`Request failed with code ${response.statusCode}`));
-                }
-            ).pipe(fs.createWriteStream(filepath))
-                .on("error", err => {
-                    return reject(err);
+            request.head(url, (error, response) => {
+                if (error) return reject(error);
+                if (response.statusCode !== 200) return reject(new Error(`Request failed with code ${response.statusCode}`));
+
+                request(url).pipe(fs.createWriteStream(filepath)).on("close", () => {
+                    resolve();
                 })
-                .on("close", () => {
-                    return resolve();
-                });
+            })
         }
     );
+}
+
+async function downloadButIgnoreError (local: boolean, uri: string, filepath: string) : Promise<void> {
+    try {
+        await download(local, uri, filepath);
+
+    } catch (err) {
+        if (debug) console.error(err);
+        log(`Error while downloading '${filepath}'`);
+    }
 }
 
 const recursive = argv.filter(a => a === "-r").length > 0;
@@ -175,10 +181,6 @@ function writeCache (filepath: string, data: Json) {
 }
 
 async function getData (local: boolean, silent: boolean, name: string, dir: string) : Promise<void> {
-
-    if (fs.existsSync(path.join(dir, name, `${name.toLowerCase()}_cover.jpg`))) {
-        return;
-    }
 
     try {
         let tag = "";
@@ -210,13 +212,13 @@ async function getData (local: boolean, silent: boolean, name: string, dir: stri
 
             log("Download cover.jpg", 1);
             if (movData.covers.length > 0) {
-                await download(local, movData.covers[0], path.join(dir, name, `${name.toLowerCase()}_cover.jpg`));
+                await downloadButIgnoreError(local, movData.covers[0], path.join(dir, name, `${name.toLowerCase()}_cover.jpg`));
 
                 log("Download thumb.jpg", 1);
-                await download(local, movData.thumb[0], path.join(dir, name, `${name.toLowerCase()}_thumb.jpg`));
+                await downloadButIgnoreError(local, movData.thumb[0], path.join(dir, name, `${name.toLowerCase()}_thumb.jpg`));
 
             } else {
-                await download(local, movData.thumb[0], path.join(dir, name, `${name.toLowerCase()}_cover.jpg`));
+                await downloadButIgnoreError(local, movData.thumb[0], path.join(dir, name, `${name.toLowerCase()}_cover.jpg`));
             }
 
             for (const idx in movData.screenshots) {
@@ -227,7 +229,7 @@ async function getData (local: boolean, silent: boolean, name: string, dir: stri
                 }
 
                 log(`Download ${filename}`, 1);
-                await download(local, movData.screenshots[idx], path.join(dir, name, filename));
+                await downloadButIgnoreError(local, movData.screenshots[idx], path.join(dir, name, filename));
             }
 
             // read actor data
@@ -351,6 +353,10 @@ if (argv[0] === "get-tag") {
 
                 for (const name of dirs) {
                     try {
+                        if (fs.readdirSync(path.join(dir, name)).filter(d => d.indexOf("_cover.jpg") > -1).length > 0) {
+                            continue;
+                        }
+
                         await getData(local, silent, name, dir);
                         log();
 
