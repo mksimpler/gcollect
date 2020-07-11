@@ -31,6 +31,7 @@
   },
   "homepage": "https://github.com/mksimpler/nprject#readme",
   "dependencies": {
+    "@babel/runtime": "^7.10.4",
     "request": "^2.88.2"
   },
   "devDependencies": {
