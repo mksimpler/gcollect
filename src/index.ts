@@ -22,6 +22,14 @@ function log (message: unknown = "", level: number = 0) {
     }
 }
 
+function hasOwnProperty (thisArg: unknown, v: string) : boolean {
+    return Object.prototype.hasOwnProperty.call(thisArg, v);
+}
+
+function isASCII (str: string) : boolean {
+    return /^[\x00-\x7F]*$/.test(str);
+}
+
 function promptAsk (text: string) : Promise<string> {
     const rl = readline.createInterface({
         "input": process.stdin,
@@ -36,10 +44,6 @@ function promptAsk (text: string) : Promise<string> {
             });
         }
     );
-}
-
-function isASCII(str: string) {
-    return /^[\x00-\x7F]*$/.test(str);
 }
 
 function get (url: string) : Promise<string> {
@@ -79,9 +83,9 @@ async function getMov (local: boolean, silent: boolean, query: string) : Promise
 
         if (silent) return null;
 
-        log("We found 2 or more movies. Please choose one.");
+        log(`We found 2 or more recoreds for '${query}'. Please choose one.`);
         for (const idx in results) {
-            log(`${parseInt(idx) + 1}. ${results[idx].movid}`);
+            log(`${parseInt(idx) + 1}. ${results[idx].title} || ${results[idx].origtitle}`);
         }
         const ans = await promptAsk("You choose: ");
         try {
@@ -122,7 +126,7 @@ async function getPpl (local: boolean, silent: boolean, query: string) : Promise
 
         if (silent) return null;
 
-        log("We found 2 or more people. Please choose one.");
+        log(`We found 2 or more people for '${query}'. Please choose one.`);
         for (const idx in results) {
             log(`${parseInt(idx) + 1}. ${results[idx].name.value} (${results[idx].name.engname})`);
         }
@@ -199,7 +203,7 @@ async function getData (local: boolean, silent: boolean, name: string, dir: stri
                 break;
 
             default:
-                if (Object.prototype.hasOwnProperty.call(tagCache, nameval)) {
+                if (hasOwnProperty(tagCache, nameval)) {
                     tag = tagCache[nameval];
 
                 } else {
@@ -241,13 +245,16 @@ async function getData (local: boolean, silent: boolean, name: string, dir: stri
                 log(`Finding actors for ${name}`, 1);
 
                 for (const actor of movData.actors) {
-                    if (Object.prototype.hasOwnProperty.call(cache, actor.text)) {
+
+                    let actorValue = isASCII(actor.text) ? actor.text.toLowerCase() : actor.text;
+
+                    if (hasOwnProperty(cache, actorValue)) {
                         // actor cached
-                        people.push(cache[actor.text]);
+                        people.push(cache[actorValue]);
 
                     } else {
 
-                        let actorValue = actor.text;
+                        actorValue = actor.text;
 
                         if (isASCII(actorValue)) {
                             const actorValueArray = actorValue.split(" ");
@@ -267,13 +274,19 @@ async function getData (local: boolean, silent: boolean, name: string, dir: stri
                         if (pplData) {
                             if (debug) log(pplData);
 
-                            if (Object.prototype.hasOwnProperty.call(cache, pplData.name.value)) {
+                            if (hasOwnProperty(cache, pplData.name.value)) {
                                 people.push(cache[pplData.name.value]);
 
                             } else {
                                 const actorNameValue = pplData.name.engname.split(" ").reverse().join(" ");
 
-                                cache[actor.text] = actorNameValue;
+                                // cache actor raw-value for next time
+                                if (isASCII(actor.text)) {
+                                    cache[actor.text.toLowerCase()] = actorNameValue;
+                                } else {
+                                    cache[actor.text] = actorNameValue;
+                                }
+
                                 people.push(actorNameValue);
                             }
                         } else {
@@ -285,7 +298,7 @@ async function getData (local: boolean, silent: boolean, name: string, dir: stri
                 people.push(movData.label.text);
             }
 
-            if (nameval === "FC2" && movData.label !== null && Object.prototype.hasOwnProperty.call(tagCache, movData.label.text)) {
+            if (nameval === "FC2" && movData.label !== null && hasOwnProperty(tagCache, movData.label.text)) {
                 tag = tagCache[movData.label.text];
             }
 
@@ -325,7 +338,7 @@ if (argv[0] === "get-tag") {
         log(JSON.stringify(tagCache, null, 2));
 
     } else {
-        if (Object.prototype.hasOwnProperty.call(tagCache, key)) {
+        if (hasOwnProperty(tagCache, key)) {
             log(`{ '${key}': '${tagCache[key]}' }`);
 
         } else {
@@ -348,7 +361,7 @@ if (argv[0] === "get-tag") {
         log(JSON.stringify(cache, null, 2));
 
     } else {
-        if (Object.prototype.hasOwnProperty.call(cache, key)) {
+        if (hasOwnProperty(cache, key)) {
             log(`{ '${key}': '${cache[key]}' }`);
 
         } else {
@@ -358,7 +371,12 @@ if (argv[0] === "get-tag") {
 } else if (argv[0] === "set-cache") {
     const [key, value] = argv.slice(1, 3);
 
-    cache[key] = value;
+    if (isASCII(key)) {
+        cache[key.toLowerCase()] = value;
+    } else {
+        cache[key] = value;
+    }
+
     log(`Set key:'${key}' to '${value}'`);
 
     writeCache(cachePath, cache);
